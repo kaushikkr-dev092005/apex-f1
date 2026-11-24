@@ -1,0 +1,11 @@
+{
+          "workload": "2000 sequential packets after 300 warm-up packets; 10 drivers, telemetry and location at every packet, timing every fourth packet",
+          "environment": "Host JVM unit test; no Android device or network",
+          "generationP95Ms": 0.0194,
+          "ingestionP50Ms": 0.0112,
+          "ingestionP95Ms": 0.0292,
+          "ingestionP99Ms": 0.059,
+          "telemetrySamplesPerDriver": 240,
+          "eventHistorySize": 101,
+          "limits": "Does not measure UI rendering, device FPS, full-session heap stability, provider latency, server processing, or network delivery. Not an end-to-end real-time claim."
+        }

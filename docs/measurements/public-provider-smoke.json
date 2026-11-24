@@ -1,0 +1,14 @@
+{
+  "verifiedUtc": "2026-11-22T17:49:47.594Z",
+  "standingsSeason": 2026,
+  "standingsRound": 21,
+  "driverCount": 25,
+  "cacheReadVerified": true,
+  "seasonRaceResultCount": 21,
+  "qualifyingCount": 21,
+  "replayTitle": "Monaco 2024 · Lap 10",
+  "recordedCoordinateCount": 610,
+  "recordedDurationMs": 80775,
+  "archiveSource": "https:\/\/api.openf1.org\/v1\/location?session_key=9523",
+  "environment": "Windows host \/ Robolectric API 35 \/ actual public HTTPS requests"
+}

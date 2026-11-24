@@ -1,0 +1,17 @@
+﻿{
+    "verifiedUtc":  "2026-10-28T07:00:49.1083565+00:00",
+    "result":  "BUILD SUCCESSFUL",
+    "tests":  39,
+    "failures":  0,
+    "testErrors":  0,
+    "lintErrors":  0,
+    "lintWarnings":  68,
+    "apkPath":  "artifacts/APEX-demo-debug.apk",
+    "apkBytes":  10694768,
+    "apkMiB":  10.2,
+    "sha256":  "41e51a2feec67121337eddcb033363d01001a6c42e92e51de7dc931b223a0139",
+    "gradleHeapMiB":  768,
+    "testHeapMiB":  384,
+    "gradleWorkers":  1,
+    "persistentGradleDaemon":  false
+}

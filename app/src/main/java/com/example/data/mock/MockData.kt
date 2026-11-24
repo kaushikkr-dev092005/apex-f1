@@ -327,37 +327,4 @@ object MockData {
             )
         )
     )
-
-    val initialNews = listOf(
-        NewsEntity(
-            id = "news_1",
-            title = "Ferrari Upgrades Package Unveiled for Italian Grand Prix",
-            summary = "Scuderia Ferrari introduces a highly anticipated custom low-downforce wing and floor upgrades aiming for Monza victory.",
-            content = "MARANELLO — Scuderia Ferrari has officially confirmed an aggressive aerodynamic upgrade package specifically tailored for their home race at Monza. The upgrades feature an extremely low-drag rear wing design and modified underfloor tunnels to maximize straight-line speed. Principal Fred Vasseur noted that the simulator tests look promising, but managing tire degradation through the Curva Grande will remain their biggest challenge during Sunday's main race. Fans are expecting a fierce podium battle with McLaren and Red Bull.",
-            category = "TECH UPDATE",
-            imageUrl = "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?q=80&w=600&auto=format&fit=crop", // placeholder standard sporty car image
-            publishedAt = "2026-06-29T10:30:00Z",
-            likesCount = 412
-        ),
-        NewsEntity(
-            id = "news_2",
-            title = "Lando Norris Clinches Sensational Pole in Rain-Soaked Silverstone",
-            summary = "McLaren's Norris masterfully tames a drying British track to pip Max Verstappen by a microscopic 0.032 seconds.",
-            content = "SILVERSTONE — In one of the most exciting qualifying sessions of the decade, Lando Norris took pole position for the British Grand Prix in front of an ecstatic home crowd. The session started under heavy rain, leading to multiple yellow flags, but a late dry line emerged. Norris switched to soft slick tires at the absolute last second, timing his final flying lap to perfection. 'It was the scariest lap of my life, but it paid off,' Norris said over the radio, holding off Max Verstappen and Lewis Hamilton.",
-            category = "RACE REPORT",
-            imageUrl = "https://images.unsplash.com/photo-1511919884226-fd3cad34687c?q=80&w=600&auto=format&fit=crop",
-            publishedAt = "2026-06-28T16:45:00Z",
-            likesCount = 892
-        ),
-        NewsEntity(
-            id = "news_3",
-            title = "Fantasy League Alert: Driver Value Recalibration",
-            summary = "Oscar Piastri's budget cost rises after strong podium runs, while Hamilton's price dips, opening interesting budget strategies.",
-            content = "LONDON — The official F1 Fantasy League regulators have completed their weekly value updates. Oscar Piastri is the week's biggest climber, with his price rising to $22.0M after consecutive podiums. Meanwhile, Lewis Hamilton becomes an attractive buy at $24.0M after a tricky weekend in Spain. Analysts suggest doubling up on McLaren drivers due to their team consistency, or investing in the high-downforce Red Bull constructor package for the upcoming high-speed races.",
-            category = "FANTASY",
-            imageUrl = "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?q=80&w=600&auto=format&fit=crop",
-            publishedAt = "2026-06-27T08:15:00Z",
-            likesCount = 215
-        )
-    )
 }

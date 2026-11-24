@@ -3,6 +3,9 @@ package com.example.data.database
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Entity(tableName = "data_cache")
+data class DataCacheEntity(@PrimaryKey val cacheKey: String, val payload: String, val fetchedAt: Long, val source: String)
+
 @Entity(tableName = "fantasy_team")
 data class FantasyTeamEntity(
     @PrimaryKey val id: Int = 1, // Single active user fantasy team

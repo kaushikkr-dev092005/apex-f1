@@ -1,36 +1,25 @@
 package com.example.ui.theme
 
 import androidx.compose.material3.Typography
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
-// Set of Material typography styles to start with
-val Typography =
-  Typography(
-    bodyLarge =
-      TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp,
-      )
-    /* Other default text styles to override
-    titleLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 22.sp,
-        lineHeight = 28.sp,
-        letterSpacing = 0.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    )
-    */
-  )
+/** One system sans family; no font download, bitmap atlas or additional runtime. */
+private val base=Typography()
+private val sans=FontFamily.SansSerif
+val Typography=Typography(
+    displayLarge=base.displayLarge.copy(fontFamily=sans),
+    displayMedium=base.displayMedium.copy(fontFamily=sans),
+    displaySmall=base.displaySmall.copy(fontFamily=sans),
+    headlineLarge=base.headlineLarge.copy(fontFamily=sans),
+    headlineMedium=base.headlineMedium.copy(fontFamily=sans),
+    headlineSmall=base.headlineSmall.copy(fontFamily=sans),
+    titleLarge=base.titleLarge.copy(fontFamily=sans),
+    titleMedium=base.titleMedium.copy(fontFamily=sans),
+    titleSmall=base.titleSmall.copy(fontFamily=sans),
+    bodyLarge=base.bodyLarge.copy(fontFamily=sans,fontFeatureSettings="tnum"),
+    bodyMedium=base.bodyMedium.copy(fontFamily=sans),
+    bodySmall=base.bodySmall.copy(fontFamily=sans),
+    labelLarge=base.labelLarge.copy(fontFamily=sans),
+    labelMedium=base.labelMedium.copy(fontFamily=sans),
+    labelSmall=base.labelSmall.copy(fontFamily=sans)
+)

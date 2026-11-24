@@ -1,0 +1,11 @@
+﻿{
+    "workload":  "Native assembleDebug and serial unit/Compose tests; project Java processes only",
+    "sampleIntervalSeconds":  2,
+    "samples":  422,
+    "peakObservedWorkingSetMiB":  1860.8,
+    "peakObservedPrivateCommitMiB":  1951.2,
+    "maxJavaProcesses":  3,
+    "gradleHeapLimitMiB":  768,
+    "testHeapLimitMiB":  384,
+    "limits":  "Two-second sampled sum of process working sets, which can double-count shared pages; not an OS-wide peak or a RAM guarantee. Native allocations, metaspace and JVM code caches are additional to heap limits."
+}

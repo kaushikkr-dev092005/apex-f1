@@ -7,6 +7,16 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+interface DataCacheDao {
+    @Query("SELECT * FROM data_cache WHERE cacheKey = :key")
+    suspend fun get(key: String): DataCacheEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entry: DataCacheEntity)
+    @Query("DELETE FROM data_cache WHERE cacheKey NOT IN (SELECT cacheKey FROM data_cache ORDER BY fetchedAt DESC LIMIT 32)")
+    suspend fun trim()
+}
+
+@Dao
 interface FantasyTeamDao {
     @Query("SELECT * FROM fantasy_team WHERE id = 1")
     fun getFantasyTeam(): Flow<FantasyTeamEntity?>
@@ -20,11 +30,14 @@ interface FantasyTeamDao {
 
 @Dao
 interface ChannelMessageDao {
-    @Query("SELECT * FROM channel_messages WHERE channelId = :channelId ORDER BY timestamp ASC")
+    @Query("SELECT * FROM (SELECT * FROM channel_messages WHERE channelId = :channelId ORDER BY timestamp DESC LIMIT 100) ORDER BY timestamp ASC")
     fun getMessagesForChannel(channelId: String): Flow<List<ChannelMessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: ChannelMessageEntity)
+
+    @Query("DELETE FROM channel_messages WHERE channelId = :channelId AND id NOT IN (SELECT id FROM channel_messages WHERE channelId = :channelId ORDER BY timestamp DESC LIMIT 100)")
+    suspend fun trimHistory(channelId: String)
 
     @Query("DELETE FROM channel_messages WHERE channelId = :channelId")
     suspend fun clearAllMessagesInChannel(channelId: String)

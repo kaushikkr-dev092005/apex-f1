@@ -3,395 +3,369 @@ package com.example.ui
 import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.database.AppDatabase
-import com.example.data.database.ChannelMessageEntity
-import com.example.data.database.FantasyTeamEntity
-import com.example.data.database.NewsEntity
-import com.example.data.mock.MockData
-import com.example.data.model.AlertType
-import com.example.data.model.Circuit
-import com.example.data.model.Constructor
-import com.example.data.model.Driver
-import com.example.data.model.NotificationAlert
-import com.example.data.model.TelemetryData
+import com.example.data.database.*
+import com.example.data.model.*
 import com.example.data.repository.F1Repository
+import com.example.data.race.*
+import com.example.data.fantasy.FantasyEngine
+import com.example.data.notifications.*
+import com.example.data.community.UnconfiguredVoiceService
+import com.example.platform.AndroidNotificationService
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.UUID
-import kotlin.random.Random
+import java.util.Calendar
+import com.example.data.explore.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class F1ViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val repository: F1Repository
-
-    init {
-        val database = AppDatabase.getDatabase(application)
-        repository = F1Repository(database)
+    private val publicData = PublicF1Repository(AppDatabase.getDatabase(application).dataCacheDao())
+    private val _experience = MutableStateFlow<String?>(null)
+    val experience = _experience.asStateFlow()
+    fun openExperience(route: String?) { _experience.value = route }
+    var circuitCatalog by mutableStateOf<List<Circuit2027>>(emptyList())
+        private set
+    var catalogError by mutableStateOf<String?>(null)
+        private set
+    var verifiedStandings by mutableStateOf(LoadState<StandingSnapshot>())
+        private set
+    var careerResults by mutableStateOf(LoadState<List<SeasonResult>>())
+        private set
+    var careerKey by mutableStateOf("")
+        private set
+    var archiveDriver by mutableStateOf<StandingRow?>(null)
+    var strategyPlan by mutableStateOf(StrategyPlan())
+        private set
+    fun updateStrategy(plan: StrategyPlan) { strategyPlan = plan }
+    var rivalryResults by mutableStateOf(LoadState<RivalrySnapshot>())
+        private set
+    var rivalryKey by mutableStateOf("")
+        private set
+    var replayClip by mutableStateOf(PublicF1Repository.demoReplay())
+        private set
+    var replayLoading by mutableStateOf(false)
+        private set
+    var replayError by mutableStateOf<String?>(null)
+        private set
+    var replaySeekMs by mutableStateOf(0L)
+        private set
+    var replayRequestId by mutableIntStateOf(0)
+        private set
+    private var careerJob: Job? = null
+    private var rivalryJob: Job? = null
+    private val prefs = application.getSharedPreferences("apex_preferences", 0)
+    private val repository = F1Repository(AppDatabase.getDatabase(application))
+    val drivers = repository.getDrivers()
+    val constructors = repository.getConstructors()
+    val circuits = repository.getCircuits()
+    private val provider = DemoRaceProvider()
+    val race = RaceStore(provider, drivers.map { it.id })
+    val voice = UnconfiguredVoiceService()
+    private val notifier = AndroidNotificationService(application)
+    private val notificationPolicy = NotificationPolicy()
+    private val feedbackChannel = Channel<String>(Channel.BUFFERED)
+    val feedback = feedbackChannel.receiveAsFlow()
+    private val _appearance = MutableStateFlow(prefs.getString("appearance", "dark") ?: "dark")
+    val appearance = _appearance.asStateFlow()
+    var aiEndpoint by mutableStateOf(prefs.getString("ai_gateway", "").orEmpty())
+        private set
+    var aiToken by mutableStateOf("")
+        private set
+    var aiInterpretation by mutableStateOf<AiInterpretation?>(null)
+        private set
+    var aiError by mutableStateOf<String?>(null)
+        private set
+    var aiLoading by mutableStateOf(false)
+        private set
+    private var aiJob: Job? = null
+    private var aiSequence = 0
+    fun configureAi(endpoint: String, token: String) {
+        if(endpoint.isNotBlank()&&!GroundedAiClient.validBaseUrl(endpoint)){message("Use an HTTPS gateway URL without credentials or query parameters.");return}
+        if(token.trim().any {it.code !in 33..126}||token.trim().length>512){message("Gateway token must contain only printable characters without spaces.");return}
+        aiEndpoint=endpoint.trim().trimEnd('/');aiToken=token.trim()
+        prefs.edit().putString("ai_gateway",aiEndpoint).apply()
+        clearAi();message(if(aiEndpoint.isEmpty())"AI gateway disabled."else"Gateway configuration saved. Access token stays in memory only.")
     }
-
-    // Static metadata
-    val drivers: List<Driver> = repository.getDrivers()
-    val constructors: List<Constructor> = repository.getConstructors()
-    val circuits: List<Circuit> = repository.getCircuits()
-
-    // Screen States
-    private val _selectedCircuit = MutableStateFlow(circuits.first())
-    val selectedCircuit: StateFlow<Circuit> = _selectedCircuit.asStateFlow()
-
-    private val _news = MutableStateFlow<List<NewsEntity>>(emptyList())
-    val news: StateFlow<List<NewsEntity>> = _news.asStateFlow()
-
-    private val _fantasyTeam = MutableStateFlow<FantasyTeamEntity?>(null)
-    val fantasyTeam: StateFlow<FantasyTeamEntity?> = _fantasyTeam.asStateFlow()
-
-    // Temporary/Draft Fantasy selections
-    var draftTeamName by mutableStateOf("My Apex Racing")
-    var draftDriver1Id by mutableStateOf<String?>(null)
-    var draftDriver2Id by mutableStateOf<String?>(null)
-    var draftConstructorId by mutableStateOf<String?>(null)
-
-    val draftBudgetUsed: Double
-        get() {
-            var cost = 0.0
-            draftDriver1Id?.let { id -> cost += drivers.find { it.id == id }?.cost ?: 0.0 }
-            draftDriver2Id?.let { id -> cost += drivers.find { it.id == id }?.cost ?: 0.0 }
-            draftConstructorId?.let { id -> cost += constructors.find { it.id == id }?.cost ?: 0.0 }
-            return cost
+    fun clearAi() {aiSequence++;aiJob?.cancel();aiInterpretation=null;aiError=null;aiLoading=false}
+    fun askAi(answer: PitWallAnswer) {
+        clearAi()
+        if(aiEndpoint.isBlank()||aiToken.isBlank()){aiError="Configure your HTTPS gateway and an access token first.";return}
+        val sequence=aiSequence;aiLoading=true
+        aiJob=viewModelScope.launch {
+            try {val result=GroundedAiClient.ask(aiEndpoint,aiToken,answer);if(sequence==aiSequence)aiInterpretation=result}
+            catch(cancelled:CancellationException){throw cancelled}
+            catch(failure:Exception){if(sequence==aiSequence)aiError=failure.message?:"AI service unavailable"}
+            finally {if(sequence==aiSequence)aiLoading=false}
         }
-
-    val draftBudgetRemaining: Double
-        get() = 100.0 - draftBudgetUsed
-
-    // Chat / Fan Channels
-    private val _selectedChannel = MutableStateFlow("General Fan Voice")
-    val selectedChannel: StateFlow<String> = _selectedChannel.asStateFlow()
-
-    private val _chatMessages = MutableStateFlow<List<ChannelMessageEntity>>(emptyList())
-    val chatMessages: StateFlow<List<ChannelMessageEntity>> = _chatMessages.asStateFlow()
-
-    // Telemetry Driver selection
-    private val _selectedTelemetryDriver = MutableStateFlow(drivers.first())
-    val selectedTelemetryDriver: StateFlow<Driver> = _selectedTelemetryDriver.asStateFlow()
-
-    private val _telemetryState = MutableStateFlow<TelemetryData?>(null)
-    val telemetryState: StateFlow<TelemetryData?> = _telemetryState.asStateFlow()
-
-    // Push Notifications Feed
-    private val _activeNotification = MutableStateFlow<NotificationAlert?>(null)
-    val activeNotification: StateFlow<NotificationAlert?> = _activeNotification.asStateFlow()
-
-    private val _notificationHistory = MutableStateFlow<List<NotificationAlert>>(emptyList())
-    val notificationHistory: StateFlow<List<NotificationAlert>> = _notificationHistory.asStateFlow()
-
-    // Social Sharing action helper
-    private val _socialShareEvent = MutableSharedFlow<String>()
-    val socialShareEvent: SharedFlow<String> = _socialShareEvent.asSharedFlow()
-
-    // Fan Voice Connection State
-    private val _voiceConnected = MutableStateFlow(false)
-    val voiceConnected: StateFlow<Boolean> = _voiceConnected.asStateFlow()
-
-    private val _activeVoiceSpeakers = MutableStateFlow<List<String>>(emptyList())
-    val activeVoiceSpeakers: StateFlow<List<String>> = _activeVoiceSpeakers.asStateFlow()
-
-    // Settings / Theme Preference
-    private val _darkThemeMode = MutableStateFlow(true) // Start dark by default as per F1 styling guidelines
-    val darkThemeMode: StateFlow<Boolean> = _darkThemeMode.asStateFlow()
-
-    private var telemetryJob: Job? = null
-    private var notificationJob: Job? = null
-    private var activeSpeakerJob: Job? = null
+    }
+    private val _selectedDriver = MutableStateFlow("leclerc")
+    val selectedDriver = _selectedDriver.asStateFlow()
+    private val _deepLink = MutableStateFlow<String?>(null)
+    val deepLink = _deepLink.asStateFlow()
+    private val _news = MutableStateFlow<List<NewsEntity>>(emptyList())
+    val news = _news.asStateFlow()
+    private val _newsError = MutableStateFlow(false)
+    val newsError = _newsError.asStateFlow()
+    private var newsJob: Job? = null
+    private val _team = MutableStateFlow<FantasyTeamEntity?>(null)
+    val fantasyTeam = _team.asStateFlow()
+    var draftTeamName by mutableStateOf("Scuderia APEX")
+    var draftDrivers by mutableStateOf<List<String>>(emptyList())
+    var draftConstructor by mutableStateOf<String?>(null)
+    var captain by mutableStateOf(prefs.getString("captain", "") ?: "")
+        private set
+    var draftCaptain by mutableStateOf(captain)
+        private set
+    var savingTeam by mutableStateOf(false)
+        private set
+    val draftBudgetUsed get() = draftDrivers.sumOf { id -> drivers.firstOrNull { it.id == id }?.cost ?: 0.0 } + (constructors.firstOrNull { it.id == draftConstructor }?.cost ?: 0.0)
+    val draftBudgetRemaining get() = 100.0 - draftBudgetUsed
+    private val _channel = MutableStateFlow("Race room")
+    val selectedChannel = _channel.asStateFlow()
+    private val _messages = MutableStateFlow<List<ChannelMessageEntity>>(emptyList())
+    val chatMessages = _messages.asStateFlow()
+    private val _readIds = MutableStateFlow(prefs.getStringSet("read_articles", emptySet())?.toSet() ?: emptySet())
+    val readIds = _readIds.asStateFlow()
+    private val _alerts = MutableStateFlow(loadAlerts())
+    val alerts = _alerts.asStateFlow()
+    var previewRoom by mutableStateOf<String?>(null)
+        private set
+    var leagueCode by mutableStateOf(prefs.getString("league_code", "") ?: "")
+        private set
+    var leagueName by mutableStateOf(prefs.getString("league_name", "") ?: "")
+        private set
+    var reducedMotion by mutableStateOf(prefs.getBoolean("reduced_motion", false))
+        private set
+    var largeText by mutableStateOf(prefs.getBoolean("large_text", false))
+        private set
+    var localNotifications by mutableStateOf(prefs.getBoolean("local_notifications", false))
+        private set
+    var blockedUsers by mutableStateOf(prefs.getStringSet("blocked_users", emptySet())?.toSet() ?: emptySet())
+        private set
+    var transferHistory by mutableStateOf(prefs.getString("transfer_history", "") ?: "")
+        private set
 
     init {
-        // Collect news from Room
+        loadCircuitCatalog()
+        refreshNews()
         viewModelScope.launch {
-            repository.getNews().collect {
-                _news.value = it
-            }
-        }
-
-        // Collect fantasy team from Room
-        viewModelScope.launch {
-            repository.getFantasyTeam().collect { team ->
-                _fantasyTeam.value = team
+            repository.getFantasyTeam().catch { message("Could not load your team. Try again.") }.collect { team ->
+                _team.value = team
                 if (team != null) {
                     draftTeamName = team.teamName
-                    draftDriver1Id = team.driver1Id
-                    draftDriver2Id = team.driver2Id
-                    draftConstructorId = team.constructorId
+                    draftDrivers = listOf(team.driver1Id, team.driver2Id)
+                    draftConstructor = team.constructorId
+                    if (captain !in draftDrivers) persistCaptain(team.driver1Id)
                 }
             }
         }
-
-        // Observe chat messages
         viewModelScope.launch {
-            _selectedChannel.collectLatest { channel ->
-                repository.getChannelMessages(channel).collect { list ->
-                    _chatMessages.value = list
+            _channel.collectLatest { channel ->
+                repository.getChannelMessages(channel).catch { message("Local chat is unavailable.") }.collect { _messages.value = it }
+            }
+        }
+        viewModelScope.launch {
+            race.events.collect { events ->
+                events.firstOrNull()?.let { event ->
+                    val now = System.currentTimeMillis()
+                    if (localNotifications && notificationPolicy.shouldSend(event, _alerts.value, now, Calendar.getInstance().get(Calendar.HOUR_OF_DAY))) notifier.notify(event)
                 }
             }
         }
-
-        // Start real-time telemetry stream for the default driver
-        startTelemetryStream()
-
-        // Start the background race occurrences (push notifications simulation)
-        startPushNotificationSimulation()
     }
 
-    fun selectCircuit(circuit: Circuit) {
-        _selectedCircuit.value = circuit
-    }
-
-    fun selectChannel(channel: String) {
-        _selectedChannel.value = channel
-    }
-
-    fun setDarkThemeMode(enabled: Boolean) {
-        _darkThemeMode.value = enabled
-    }
-
-    fun toggleNewsBookmark(newsId: String, currentStatus: Boolean) {
+    fun loadCircuitCatalog() {
+        catalogError = null
         viewModelScope.launch {
-            repository.bookmarkNews(newsId, !currentStatus)
+            try {
+                circuitCatalog = withContext(Dispatchers.IO) {
+                    getApplication<Application>().assets.open("circuits-2027.json").bufferedReader().use { CircuitCatalog.parse(it.readText()) }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { catalogError = "Circuit collection could not be loaded. Please retry." }
         }
     }
-
-    fun likeNews(newsId: String) {
+    fun loadVerifiedStandings(force: Boolean = false) {
+        if (verifiedStandings.loading) return
+        verifiedStandings = verifiedStandings.copy(loading = true, error = null)
         viewModelScope.launch {
-            repository.likeNews(newsId)
+            try { verifiedStandings = LoadState(snapshot = publicData.standings(force)) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { verifiedStandings = verifiedStandings.copy(loading = false, error = failure.message ?: "Standings unavailable") }
         }
     }
-
-    // Fan Chats
-    fun postChatMessage(text: String) {
-        if (text.isBlank()) return
+    fun loadCareer(id: String, season: Int, force: Boolean = false) {
+        val key = "$id/$season"
+        if (!force && key == careerKey && (careerResults.loading || careerResults.snapshot != null)) return
+        careerJob?.cancel()
+        careerResults = if (key == careerKey) careerResults.copy(loading = true, error = null) else LoadState(loading = true)
+        careerKey = key
+        careerJob = viewModelScope.launch {
+            try { careerResults = LoadState(snapshot = publicData.results(id, season, force)) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { careerResults = careerResults.copy(loading = false, error = failure.message ?: "Career results unavailable") }
+        }
+    }
+    fun loadRivalry(left: String, right: String, season: Int) {
+        val key = "$left/$right/$season"
+        if (key == rivalryKey && (rivalryResults.loading || rivalryResults.snapshot != null)) return
+        rivalryJob?.cancel(); rivalryKey = key; rivalryResults = LoadState(loading = true)
+        rivalryJob = viewModelScope.launch {
+            try {
+                val a = publicData.results(left, season); delay(400)
+                val b = publicData.results(right, season); delay(400)
+                val qa = publicData.qualifying(left, season); delay(400)
+                val qb = publicData.qualifying(right, season)
+                val differences = qa.data.mapNotNull { q -> qb.data.find { it.round == q.round }?.q1Ms?.let { other -> q.q1Ms?.let { it - other } } }.sorted()
+                val median = if (differences.isEmpty()) null else if (differences.size % 2 == 1) differences[differences.size / 2].toDouble() else (differences[differences.size/2-1]+differences[differences.size/2])/2.0
+                rivalryResults = LoadState(snapshot = DataSnapshot(RivalrySnapshot(a.data,b.data,median,differences.size),"https://api.jolpi.ca/ergast/f1/$season/",minOf(a.fetchedAt,b.fetchedAt,qa.fetchedAt,qb.fetchedAt),a.cached||b.cached||qa.cached||qb.cached,a.stale||b.stale||qa.stale||qb.stale))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { rivalryResults = LoadState(error = failure.message ?: "Comparison unavailable") }
+        }
+    }
+    fun loadArchive() {
+        if (replayLoading) return
+        replayLoading = true; replayError = null
         viewModelScope.launch {
-            repository.sendChannelMessage(
-                channelId = _selectedChannel.value,
-                username = "ApexFan_" + Random.nextInt(100, 999),
-                messageText = text,
-                colorHex = listOf("#E10600", "#00D2BE", "#FFEC00", "#FF8000", "#FF80B0").random()
-            )
+            try { replayClip = publicData.monacoArchive() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { replayError = failure.message ?: "Archive is unavailable. The selected demonstration remains labeled." }
+            finally { replayLoading = false }
         }
     }
+    fun useDemoReplay() { replayClip = PublicF1Repository.demoReplay(); replayError = null;replaySeekMs=0L;replayRequestId++ }
+    fun requestReplayAt(timeMs:Long,recorded:Boolean) {
+        replaySeekMs=timeMs.coerceIn(0L,180_000L);replayRequestId++
+        if(recorded)loadArchive()else {replayClip=PublicF1Repository.demoReplay();replayError=null}
+    }
+    fun predictionVote(question: String): String? = prefs.getString("prediction_$question", null)
+    fun savePrediction(question: String, choice: String) { prefs.edit().putString("prediction_$question", choice).apply(); message("Prediction saved on this device.") }
 
-    // Fantasy Operations
-    fun toggleDraftDriver(driverId: String) {
-        if (draftDriver1Id == driverId) {
-            draftDriver1Id = null
-        } else if (draftDriver2Id == driverId) {
-            draftDriver2Id = null
-        } else {
-            // Assign to empty slot or replace the first slot
-            if (draftDriver1Id == null) {
-                draftDriver1Id = driverId
-            } else if (draftDriver2Id == null) {
-                draftDriver2Id = driverId
-            } else {
-                draftDriver1Id = driverId // Replace
-            }
+    fun message(text: String) { feedbackChannel.trySend(text) }
+    fun setForeground(active: Boolean) { if (active) race.start(viewModelScope) else race.stop() }
+    fun reconnect() { provider.disconnected = false; race.reconnect(viewModelScope) }
+    fun interruptFeed() { provider.disconnected = true; message("Demo connection interrupted. Restore it with Reconnect.") }
+    fun selectDriver(id: String) { if (drivers.any { it.id == id }) _selectedDriver.value = id }
+    fun route(link: String) { _deepLink.value = link }
+    fun consumeDeepLink() { _deepLink.value = null }
+    fun setAppearance(value: String) {
+        if (value !in listOf("dark", "light", "system")) return
+        _appearance.value = value
+        prefs.edit().putString("appearance", value).apply()
+    }
+    fun updateReducedMotion(value: Boolean) { reducedMotion = value; prefs.edit().putBoolean("reduced_motion", value).apply() }
+    fun updateLargeText(value: Boolean) { largeText = value; prefs.edit().putBoolean("large_text", value).apply() }
+    fun followDriver(id: String) { saveAlerts(_alerts.value.copy(followedDrivers = _alerts.value.followedDrivers.let { if (id in it) it - id else it + id })) }
+    fun followConstructor(id: String) { saveAlerts(_alerts.value.copy(followedConstructors = _alerts.value.followedConstructors.let { if (id in it) it - id else it + id })) }
+    fun toggleCategory(id: String) { saveAlerts(_alerts.value.copy(enabled = _alerts.value.enabled.let { if (id in it) it - id else it + id })) }
+    fun updateAlertPreferences(p: AlertPreferences) = saveAlerts(p)
+    fun updateLocalNotifications(value: Boolean) { localNotifications = value; prefs.edit().putBoolean("local_notifications", value).apply() }
+    fun testNotification(): Boolean {
+        val e = RaceEvent("test-" + System.currentTimeMillis(), EventKind.RedFlag, "Demo red flag", "Local test alert. Tap to open race control.", 24, System.currentTimeMillis())
+        return notifier.notify(e).also { if (!it) message("Notifications are disabled. Allow them in Android settings.") }
+    }
+
+    fun refreshNews() {
+        newsJob?.cancel()
+        _newsError.value = false
+        newsJob = viewModelScope.launch {
+            repository.getNews().catch { android.util.Log.w("APEX", "Local journal load failed", it); _newsError.value = true }.collect { _news.value = it }
         }
     }
-
-    fun selectDraftConstructor(constructorId: String) {
-        draftConstructorId = if (draftConstructorId == constructorId) null else constructorId
+    fun toggleNewsBookmark(article: NewsEntity) {
+        viewModelScope.launch {
+            runCatching { repository.bookmarkNews(article.id, !article.isBookmarked) }.onFailure { message("Could not save article. Please retry.") }
+        }
     }
+    fun markRead(id: String) { _readIds.value = _readIds.value + id; prefs.edit().putStringSet("read_articles", _readIds.value).apply() }
 
+    fun toggleDraftDriver(id: String) {
+        if (drivers.none { it.id == id }) return
+        draftDrivers = if (id in draftDrivers) draftDrivers - id else if (draftDrivers.size < 2) draftDrivers + id else {
+            message("Remove a driver before adding another."); return
+        }
+        if (draftCaptain !in draftDrivers) draftCaptain = draftDrivers.firstOrNull().orEmpty()
+    }
+    fun selectDraftConstructor(id: String) { draftConstructor = if (draftConstructor == id) null else id }
+    private fun persistCaptain(id: String) { captain = id; draftCaptain = id; prefs.edit().putString("captain", id).apply() }
+    fun chooseDraftCaptain(id: String) { if (id in draftDrivers) draftCaptain = id }
+    fun restoreDraft() { _team.value?.let { draftTeamName = it.teamName; draftDrivers = listOf(it.driver1Id, it.driver2Id); draftConstructor = it.constructorId; draftCaptain = captain } }
     fun saveFantasyTeam() {
+        val error = FantasyEngine.validate(draftTeamName, draftDrivers, draftConstructor, drivers, constructors)
+        if (error != null) { message(error); return }
+        if (savingTeam) return
+        val name = draftTeamName.trim()
+        val ids = draftDrivers.toList()
+        val constructor = draftConstructor!!
+        val budget = draftBudgetRemaining
+        val selectedCaptain = draftCaptain.takeIf { it in ids } ?: ids.first()
+        savingTeam = true
         viewModelScope.launch {
-            val d1 = draftDriver1Id ?: return@launch
-            val d2 = draftDriver2Id ?: return@launch
-            val cId = draftConstructorId ?: return@launch
-            
-            repository.saveFantasyTeam(
-                teamName = draftTeamName,
-                driver1Id = d1,
-                driver2Id = d2,
-                constructorId = cId,
-                budgetRemaining = draftBudgetRemaining
-            )
-            triggerInAppPushNotification(
-                title = "F1 Fantasy Active!",
-                message = "Your team '$draftTeamName' has been locked into the Global Fan League. Good luck!",
-                type = AlertType.LAPUPDATE
-            )
+            try {
+                val points = ids.sumOf { FantasyEngine.score(it, it == selectedCaptain) } + FantasyEngine.constructorScore(constructor, drivers)
+                repository.saveFantasyTeam(name, ids[0], ids[1], constructor, budget, points)
+                persistCaptain(selectedCaptain)
+                val change = "Exhibition roster saved · " + ids.joinToString(" / ") { id -> drivers.first { it.id == id }.code }
+                transferHistory = (listOf(change) + transferHistory.lines().filter { it.isNotBlank() }).take(10).joinToString("\n")
+                prefs.edit().putString("transfer_history", transferHistory).apply()
+                message("Team saved on this device. Exhibition scoring is ready.")
+            } catch (_: Exception) { message("Could not save your team. Please retry.") }
+            finally { savingTeam = false }
         }
     }
+    fun createLeague(name: String) {
+        if (name.trim().length !in 2..30) { message("League name must be 2–30 characters."); return }
+        leagueName = name.trim()
+        leagueCode = "APX-" + kotlin.math.abs(name.hashCode().toLong()).toString(36).uppercase().padStart(6, '0').take(6)
+        prefs.edit().putString("league_code", leagueCode).putString("league_name", leagueName).apply()
+        message("Local demo league created. Share its exhibition invite.")
+    }
+    fun joinLeague(code: String) {
+        val normalized = code.trim().uppercase()
+        if (!normalized.matches(Regex("APX-[A-Z0-9]{6}"))) { message("Use an invite like APX-MONACO."); return }
+        leagueCode = normalized
+        leagueName = "Paddock friends"
+        prefs.edit().putString("league_code", leagueCode).putString("league_name", leagueName).apply()
+        message("Joined a local league preview. Online leagues require a backend.")
+    }
 
-    fun clearFantasyTeam() {
+    fun selectChannel(value: String) { _channel.value = value }
+    fun postChatMessage(text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        if (clean.length > 500) { message("Keep messages under 500 characters."); return }
         viewModelScope.launch {
-            repository.clearFantasyTeam()
-            draftDriver1Id = null
-            draftDriver2Id = null
-            draftConstructorId = null
+            runCatching { repository.sendChannelMessage(_channel.value, "You", clean, "#E49AA8") }
+                .onFailure { message("Message could not be saved. Please retry.") }
         }
     }
+    fun previewVoice(room: String) { previewRoom = room }
+    fun leaveVoice() { previewRoom = null }
+    fun blockUser(user: String) { blockedUsers = blockedUsers + user; prefs.edit().putStringSet("blocked_users", blockedUsers).apply(); message("User blocked on this device.") }
+    fun reportMessage(id: String) { prefs.edit().putBoolean("report_$id", true).apply(); message("Report saved locally. Moderation delivery needs a community server.") }
 
-    // Telemetry Driver Control
-    fun setTelemetryDriver(driver: Driver) {
-        _selectedTelemetryDriver.value = driver
-        startTelemetryStream()
+    private fun loadAlerts() = AlertPreferences(
+        enabled = prefs.getStringSet("alert_categories", setOf("race", "red", "safety", "fastest", "finish"))?.toSet() ?: emptySet(),
+        followedDrivers = prefs.getStringSet("followed_drivers", setOf("leclerc"))?.toSet() ?: emptySet(),
+        followedConstructors = prefs.getStringSet("followed_constructors", setOf("ferrari"))?.toSet() ?: emptySet(),
+        quietEnabled = prefs.getBoolean("quiet_enabled", false),
+        quietStart = prefs.getInt("quiet_start", 23), quietEnd = prefs.getInt("quiet_end", 7),
+        digest = prefs.getBoolean("digest", false), throttle = prefs.getBoolean("throttle", true)
+    )
+    private fun saveAlerts(p: AlertPreferences) {
+        _alerts.value = p
+        prefs.edit().putStringSet("alert_categories", p.enabled).putStringSet("followed_drivers", p.followedDrivers)
+            .putStringSet("followed_constructors", p.followedConstructors).putBoolean("quiet_enabled", p.quietEnabled)
+            .putInt("quiet_start", p.quietStart).putInt("quiet_end", p.quietEnd)
+            .putBoolean("digest", p.digest).putBoolean("throttle", p.throttle).apply()
     }
-
-    private fun startTelemetryStream() {
-        telemetryJob?.cancel()
-        telemetryJob = viewModelScope.launch {
-            repository.getTelemetryStream(_selectedTelemetryDriver.value.id).collect { data ->
-                _telemetryState.value = data
-            }
-        }
-    }
-
-    // Toggle Voice Channel Connection
-    fun toggleVoiceChannel() {
-        val isConnecting = !_voiceConnected.value
-        _voiceConnected.value = isConnecting
-
-        if (isConnecting) {
-            // Generate some random speaker simulation
-            activeSpeakerJob = viewModelScope.launch {
-                val potentialSpeakers = listOf("Paddock_Guru", "LeclercFansOnly", "SuperMax33", "Hamiltonian44", "BoxBoxBox")
-                while (true) {
-                    delay(Random.nextLong(2000, 5000))
-                    val speakingCount = Random.nextInt(0, 3)
-                    _activeVoiceSpeakers.value = potentialSpeakers.shuffled().take(speakingCount)
-                }
-            }
-            triggerInAppPushNotification(
-                title = "Voice Connected",
-                message = "You have joined the '${_selectedChannel.value}' audio space. Plug in and chat live!",
-                type = AlertType.GREENFLAG
-            )
-        } else {
-            activeSpeakerJob?.cancel()
-            _activeVoiceSpeakers.value = emptyList()
-        }
-    }
-
-    // Social Sharing Helper
-    fun shareRaceHighlight(highlightText: String) {
-        viewModelScope.launch {
-            _socialShareEvent.emit(highlightText)
-        }
-    }
-
-    // Push Notifications Simulation
-    private fun startPushNotificationSimulation() {
-        notificationJob = viewModelScope.launch {
-            delay(5000) // initial delay
-            val mockNotifications = listOf(
-                NotificationAlert(
-                    id = "alert_1",
-                    title = "🔴 RED FLAG Sector 2",
-                    message = "Williams of Logan Sargeant hit the barriers at turn 4. Session suspended.",
-                    type = AlertType.REDFLAG
-                ),
-                NotificationAlert(
-                    id = "alert_2",
-                    title = "⏱️ Purple Sector 1",
-                    message = "Max Verstappen clocks a blistering 28.114s, the fastest Sector 1 of the race!",
-                    type = AlertType.LAPUPDATE
-                ),
-                NotificationAlert(
-                    id = "alert_3",
-                    title = "⚡ DRS Enabled",
-                    message = "Race Control has enabled the Drag Reduction System as track dry line widens.",
-                    type = AlertType.DRS
-                ),
-                NotificationAlert(
-                    id = "alert_4",
-                    title = "🏆 Critical Overtake",
-                    message = "Lando Norris performs a daring dive down the inside at Vale to steal P1 from Verstappen!",
-                    type = AlertType.OVERTAKE
-                ),
-                NotificationAlert(
-                    id = "alert_5",
-                    title = "🟡 Yellow Flag Sector 3",
-                    message = "Aston Martin of Fernando Alonso spun at turn 16. Sector 3 yellow flags active.",
-                    type = AlertType.YELLOWFLAG
-                ),
-                NotificationAlert(
-                    id = "alert_6",
-                    title = "🟢 Track Clear",
-                    message = "Yellow flags cleared in Sector 3. Drivers green to go full speed.",
-                    type = AlertType.GREENFLAG
-                ),
-                NotificationAlert(
-                    id = "alert_7",
-                    title = "⏱️ FASTEST LAP",
-                    message = "Charles Leclerc sets the overall fastest lap: 1:16.890 (+1 Championship Point).",
-                    type = AlertType.LAPUPDATE
-                )
-            )
-
-            var index = 0
-            while (true) {
-                val currentAlert = mockNotifications[index % mockNotifications.size]
-                val freshAlert = currentAlert.copy(
-                    id = UUID.randomUUID().toString(),
-                    timestamp = System.currentTimeMillis()
-                )
-                triggerInAppPushNotification(freshAlert.title, freshAlert.message, freshAlert.type)
-                
-                index++
-                // Post occasional bot messages in Chat as events unfold to make the chat feel real-time and hyperactive!
-                val sampleBotMessages = listOf(
-                    "OMG DID YOU SEE THAT?? Lando is flying!!!",
-                    "Max's sector 1 was insane, Red Bull speed is back",
-                    "Red flag is bad for Sainz's strategy, he just pitted",
-                    "DRS enabled, let the slipstream battles begin!",
-                    "Who's watching the telemetry? Verstappen's throttle trace is wild through Becketts",
-                    "What a move by Leclerc! Clean racing",
-                    "Is anybody in the fantasy top 100? My drivers are falling behind!"
-                )
-                val botUser = listOf("F1_Stats_Bot", "Hamilton_Crew", "Tifosi_Steve", "NorrisFanatic", "Apex_Pundit").random()
-                repository.sendChannelMessage(
-                    channelId = _selectedChannel.value,
-                    username = botUser,
-                    messageText = sampleBotMessages.random(),
-                    colorHex = "#27F4D2"
-                )
-
-                delay(18000) // New notification popup every 18 seconds!
-            }
-        }
-    }
-
-    private fun triggerInAppPushNotification(title: String, message: String, type: AlertType) {
-        val alert = NotificationAlert(
-            id = UUID.randomUUID().toString(),
-            title = title,
-            message = message,
-            type = type
-        )
-        viewModelScope.launch {
-            _activeNotification.value = alert
-            _notificationHistory.value = listOf(alert) + _notificationHistory.value.take(25) // Keep last 25
-            
-            // Notification toast remains visible for 4.5 seconds
-            delay(4500)
-            if (_activeNotification.value?.id == alert.id) {
-                _activeNotification.value = null
-            }
-        }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        telemetryJob?.cancel()
-        notificationJob?.cancel()
-        activeSpeakerJob?.cancel()
-    }
+    override fun onCleared() { race.stop(); super.onCleared() }
 }

@@ -1,0 +1,177 @@
+{
+  "verifiedUtc": "2026-11-22T18:25:19.844429+00:00",
+  "versionName": "0.3.0-demo",
+  "versionCode": 4,
+  "applicationId": "com.aistudio.f1live.vnmqpz.demo",
+  "apkPath": "artifacts/APEX-0.3.0.apk",
+  "apkBytes": 7232940,
+  "apkMiB": 6.9,
+  "sha256": "9988f4cb7095758420fcd0527ad7eb3dfcdbd820b77772644996260be055bcb9",
+  "v2SignatureVerified": true,
+  "zipAlignment16KiBVerified": true,
+  "sameSignerAsPreviousPhoneBuild": true,
+  "debuggable": false,
+  "testOnly": false,
+  "minimumAndroidApi": 24,
+  "targetAndroidApi": 36,
+  "androidTests": {
+    "tests": 68,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "passed": 67,
+    "classes": [
+      {
+        "class": "com.example.ApexJourneyTest",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.CacheMigrationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.ExampleRobolectricTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.ExampleUnitTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.ExploreJourneyTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.ExploreLogicTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.FantasyEngineTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.GreetingScreenshotTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.LaunchActivityTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.NotificationPolicyTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.PlatformServicesTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.PublicProviderSmokeTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 1
+      },
+      {
+        "class": "com.example.RaceEngineTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.RaceNormalizationTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.RacePerformanceTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "com.example.SmallExploreScreenTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  },
+  "publicProviderSmoke": {
+    "verifiedUtc": "2026-11-22T17:49:47.594Z",
+    "standingsSeason": 2026,
+    "standingsRound": 21,
+    "driverCount": 25,
+    "cacheReadVerified": true,
+    "seasonRaceResultCount": 21,
+    "qualifyingCount": 21,
+    "replayTitle": "Monaco 2024 Â· Lap 10",
+    "recordedCoordinateCount": 610,
+    "recordedDurationMs": 80775,
+    "archiveSource": "https://api.openf1.org/v1/location?session_key=9523",
+    "environment": "Windows host / Robolectric API 35 / actual public HTTPS requests"
+  },
+  "backendTestsPassed": 7,
+  "lintErrors": 0,
+  "lintWarnings": 40,
+  "lintIssueCounts": {
+    "RedundantLabel": 1,
+    "GradleDependency": 2,
+    "UnusedResources": 11,
+    "IconDipSize": 2,
+    "UseKtx": 24
+  },
+  "gradleHeapMiB": 768,
+  "testWorkerHeapMiB": 384,
+  "gradleWorkers": 1,
+  "newAndroidDependencies": 0,
+  "sampledTestMemoryReport": "docs/measurements/explore-build-memory.json",
+  "currentPhysicalDeviceTested": false,
+  "previousPhysicalBuild": "0.2.1-demo; 28 October 2026",
+  "limitations": [
+    "Race feed remains demonstration",
+    "Helmet/car models are original concepts, not licensed replicas",
+    "Recorded replay is one Monaco 2024 lap, not an entire historical catalog",
+    "Remote AI needs configured gateway/provider; tests make no paid calls",
+    "Paddock is local; global authentication/voice/push require services",
+    "Device FPS and extended race memory stability are unmeasured"
+  ]
+}

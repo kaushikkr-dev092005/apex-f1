@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme =
   darkColorScheme(
     primary = F1Red,
-    onPrimary = Color.White,
+    onPrimary = Color(0xFF23080D),
     secondary = F1Green,
     onSecondary = Color.Black,
     tertiary = F1Yellow,
@@ -22,25 +22,27 @@ private val DarkColorScheme =
     onBackground = Color.White,
     surface = F1GridSurface,
     onSurface = Color.White,
-    surfaceVariant = Color(0xFF2A2A34),
-    onSurfaceVariant = Color(0xFFC4C4CC),
-    outline = Color(0xFF8E8E93)
+    surfaceVariant = Color(0xFF251F28),
+    onSurfaceVariant = Color(0xFFA9A3AD),
+    outline = Color(0xFF6E6772),
+    outlineVariant = Color(0xFF302A33)
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = F1Red,
+    primary = Color(0xFFC62036),
     onPrimary = Color.White,
     secondary = F1Red,
     onSecondary = Color.White,
     tertiary = F1Green,
-    background = Color(0xFFF6F6F9),
+    background = Color(0xFFF5F1F2),
     onBackground = F1TextPrimaryLight,
     surface = Color.White,
     onSurface = F1TextPrimaryLight,
     surfaceVariant = Color(0xFFE5E5EA),
     onSurfaceVariant = F1TextSecondaryLight,
-    outline = Color(0xFF8E8E93)
+    outline = Color(0xFF726974),
+    outlineVariant = Color(0xFFDFD7DD)
   )
 
 @Composable
